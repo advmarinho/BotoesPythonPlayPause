@@ -1,0 +1,98 @@
+import javax.swing.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+
+public class LeitorDeArquivo {
+    private static boolean isRunning = true; // Indica se a leitura está em execução ou pausada
+    private static BufferedReader reader; // Leitor de buffer para o arquivo
+    private static Thread leituraThread; // Thread para controlar a leitura do arquivo
+    private static File lastDirectory = null; // Armazena o último diretório usado
+
+    public static void main(String[] args) {
+        // Escolher o arquivo a ser lido
+        JFileChooser fileChooser = new JFileChooser();
+
+        // Se houver um diretório anterior, definir como diretório padrão
+        if (lastDirectory != null) {
+            fileChooser.setCurrentDirectory(lastDirectory);
+        }
+
+        int returnValue = fileChooser.showOpenDialog(null);
+        if (returnValue == JFileChooser.APPROVE_OPTION) {
+            try {
+                // Armazenar o diretório do arquivo selecionado
+                lastDirectory = fileChooser.getCurrentDirectory();
+
+                // Abrir o arquivo para leitura
+                reader = new BufferedReader(new FileReader(fileChooser.getSelectedFile()));
+
+                // Criar a thread de leitura do arquivo
+                leituraThread = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            String linha;
+                            while ((linha = reader.readLine()) != null) {
+                                synchronized (LeitorDeArquivo.class) {
+                                    while (!isRunning) {
+                                        // Aguarda até que a leitura seja retomada
+                                        LeitorDeArquivo.class.wait();
+                                    }
+                                }
+                                // Exibir a linha atual do arquivo
+                                System.out.println(linha);
+                                // Pausar 2 segundos antes de ler a próxima linha
+                                Thread.sleep(2000);
+                            }
+                        } catch (IOException | InterruptedException e) {
+                            e.printStackTrace();
+                        } finally {
+                            try {
+                                reader.close();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                });
+
+                // Iniciar a thread de leitura
+                leituraThread.start();
+
+                // Criar o botão de Play/Pause
+                JButton playPauseButton = new JButton("Pause");
+                playPauseButton.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        synchronized (LeitorDeArquivo.class) {
+                            // Alternar o estado de execução da leitura
+                            isRunning = !isRunning;
+                            // Alterar o texto do botão
+                            playPauseButton.setText(isRunning ? "Pause" : "Play");
+                            // Se voltar a rodar, notifica a thread para continuar
+                            if (isRunning) {
+                                LeitorDeArquivo.class.notifyAll();
+                            }
+                        }
+                    }
+                });
+
+                // Criar uma janela para conter o botão
+                JFrame frame = new JFrame("Leitor de Arquivo");
+                frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                frame.setSize(300, 100);
+                frame.setLayout(new java.awt.FlowLayout());
+                frame.add(playPauseButton);
+                frame.setVisible(true);
+
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(null, "Erro ao abrir o arquivo!", "Erro", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+}
